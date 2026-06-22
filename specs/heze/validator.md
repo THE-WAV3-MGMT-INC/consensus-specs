@@ -17,7 +17,6 @@
     - [Lookahead](#lookahead)
   - [Block and sidecar proposal](#block-and-sidecar-proposal)
     - [Constructing the `BeaconBlockBody`](#constructing-the-beaconblockbody)
-      - [Signed execution payload bid](#signed-execution-payload-bid)
       - [ExecutionPayload](#executionpayload)
   - [Inclusion list proposal](#inclusion-list-proposal)
     - [Constructing the `SignedInclusionList`](#constructing-the-signedinclusionlist)
@@ -37,7 +36,7 @@ validator" to implement Heze.
 
 ```python
 @dataclass
-class GetInclusionListResponse(object):
+class GetInclusionListResponse:
     inclusion_list_transactions: Sequence[Transaction]
 ```
 
@@ -45,24 +44,23 @@ class GetInclusionListResponse(object):
 
 ### `ExecutionEngine`
 
-*Note*: `get_inclusion_list` function is added to the `ExecutionEngine` protocol
-for use as an inclusion list committee member.
+*Note*: The `get_inclusion_list` function is added to the `ExecutionEngine`
+protocol for use as an inclusion list committee member.
 
 The body of this function is implementation dependent. The Engine API may be
 used to implement it with an external execution engine.
 
 #### New `get_inclusion_list`
 
-`get_inclusion_list` returns `GetInclusionListResponse` with the most recent
-inclusion list transactions that has been built based on the latest view of the
-public mempool.
+*Note*: `get_inclusion_list` returns `GetInclusionListResponse` with the most
+recent inclusion list transactions that has been built based on the latest view
+of the public mempool.
 
 ```python
 def get_inclusion_list(self: ExecutionEngine) -> GetInclusionListResponse:
     """
-    Return ``GetInclusionListResponse`` object.
+    Return inclusion list transactions (as Sequence[Transaction]) object.
     """
-    ...
 ```
 
 ## Beacon chain responsibilities
@@ -109,16 +107,6 @@ list committee slot.
 
 #### Constructing the `BeaconBlockBody`
 
-##### Signed execution payload bid
-
-*Note*: The only change made to `signed_execution_payload_bid` is to require
-that `bid.inclusion_list_bits` must satisfy `is_inclusion_list_bits_inclusive()`
-with respect to the proposer's inclusion list view, which comprises all valid
-and non-equivocating inclusion lists they have observed.
-
-- The `bid.inclusion_list_bits` must satisfy
-  `is_inclusion_list_bits_inclusive(get_inclusion_list_store(), state, slot - 1, bid.inclusion_list_bits, only_timely=False)`.
-
 ##### ExecutionPayload
 
 `prepare_execution_payload` is updated from the Gloas specification to provide
@@ -137,16 +125,17 @@ inclusion lists they have observed.
 ```python
 def prepare_execution_payload(
     store: Store,
+    head: ForkChoiceNode,
     state: BeaconState,
     safe_block_hash: Hash32,
     finalized_block_hash: Hash32,
     suggested_fee_recipient: ExecutionAddress,
+    target_gas_limit: uint64,
     execution_engine: ExecutionEngine,
 ) -> Optional[PayloadId]:
     parent_bid = state.latest_execution_payload_bid
-    parent_root = hash_tree_root(state.latest_block_header)
-    if should_extend_payload(store, parent_root):
-        envelope = store.payloads[parent_root]
+    if should_build_on_full(store, head):
+        envelope = store.payloads[head.root]
         # Make a copy of the state to avoid mutability issues
         state = copy(state)
         # Apply parent payload before computing withdrawals
@@ -165,6 +154,7 @@ def prepare_execution_payload(
         withdrawals=withdrawals,
         parent_beacon_block_root=hash_tree_root(state.latest_block_header),
         slot_number=state.slot,
+        target_gas_limit=target_gas_limit,
         # [New in Heze:EIP7805]
         inclusion_list_transactions=get_inclusion_list_transactions(
             get_inclusion_list_store(), state, Slot(state.slot - 1), only_timely=False

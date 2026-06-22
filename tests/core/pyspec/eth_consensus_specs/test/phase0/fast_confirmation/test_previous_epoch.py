@@ -2,14 +2,11 @@ from dataclasses import dataclass
 
 from eth_consensus_specs.test.context import (
     MINIMAL,
+    never_bls,
     only_generator,
     spec_state_test,
-    with_all_phases_from_to,
+    with_altair_and_later,
     with_presets,
-)
-from eth_consensus_specs.test.helpers.constants import (
-    ALTAIR,
-    GLOAS,
 )
 from eth_consensus_specs.test.helpers.fast_confirmation import (
     AdvanceSlot,
@@ -23,11 +20,14 @@ from eth_consensus_specs.test.helpers.fast_confirmation import (
     SlotRun,
     SlotSequence,
 )
+from eth_consensus_specs.test.helpers.fork_choice import (
+    is_ancestor,
+)
 
 
 @dataclass
 class PreviousEpochTestSpecification:
-    prev_head_ancestor: bool  # is_ancestor(store, fcr_store.previous_slot_head, block_root)
+    prev_head_ancestor: bool  # is_ancestor(store, spec.get_node_for_root(fcr_store.previous_slot_head), spec.get_node_for_root((block_root))
     first_slot_call: bool  # is_start_slot_at_epoch(get_current_slot(store))
     is_one_confirmed: bool  # is_one_confirmed(store, get_current_balance_source(store), block_root)
     no_conflicting_chkp: bool  # will_no_conflicting_checkpoint_be_justified(store)
@@ -42,7 +42,7 @@ class PreviousEpochTestSpecification:
 
     def get_prev_epoch_canonical_roots(self, spec, fcr_store):
         store = fcr_store.store
-        head = spec.get_head(store)
+        head = spec.get_head(store).root
         current_epoch = spec.get_current_store_epoch(store)
         canonical_roots = spec.get_ancestor_roots(store, head, fcr_store.confirmed_root)
         return [
@@ -53,7 +53,7 @@ class PreviousEpochTestSpecification:
 
     def verify_preconditions(self, spec, fcr_store):
         store = fcr_store.store
-        head = spec.get_head(store)
+        head = spec.get_head(store).root
         current_epoch = spec.get_current_store_epoch(store)
         current_slot = spec.get_current_slot(store)
         confirmed_epoch = spec.get_block_epoch(store, fcr_store.confirmed_root)
@@ -77,7 +77,7 @@ class PreviousEpochTestSpecification:
             spec.get_voting_source(store, will_be_prev_slot_head).epoch + 2 >= current_epoch
         )
         assert self.prev_head_ancestor == (
-            spec.is_ancestor(store, will_be_prev_slot_head, prev_epoch_canonical_roots[0])
+            is_ancestor(spec, store, will_be_prev_slot_head, prev_epoch_canonical_roots[0])
         )
         assert self.block_vs_fresh == (
             spec.get_voting_source(store, prev_epoch_canonical_roots[0]).epoch + 2 >= current_epoch
@@ -95,7 +95,7 @@ class PreviousEpochTestSpecification:
 
     def get_last_one_confirmed_block(self, spec, fcr_store):
         store = fcr_store.store
-        head = spec.get_head(store)
+        head = spec.get_head(store).root
         canonical_roots = spec.get_ancestor_roots(store, head, fcr_store.confirmed_root)
         balance_source = spec.get_current_balance_source(fcr_store)
         confirmed_root = fcr_store.confirmed_root
@@ -114,11 +114,10 @@ class PreviousEpochTestSpecification:
         if not (self.no_conflicting_chkp or self.first_slot_call):
             return fcr_store.confirmed_root
 
-        if (self.prev_head_vs_fresh and self.prev_head_ancestor) and (
-            self.first_slot_call or self.prev_head_uj_fresh or self.head_uj_fresh
-        ):
-            return self.get_last_one_confirmed_block(spec, fcr_store)
-        elif self.block_vs_fresh and (self.first_slot_call or self.head_uj_fresh):
+        if (
+            (self.prev_head_vs_fresh and self.prev_head_ancestor)
+            and (self.first_slot_call or self.prev_head_uj_fresh or self.head_uj_fresh)
+        ) or (self.block_vs_fresh and (self.first_slot_call or self.head_uj_fresh)):
             return self.get_last_one_confirmed_block(spec, fcr_store)
         else:
             return fcr_store.confirmed_root
@@ -781,9 +780,10 @@ def build_and_run_previous_epoch_test(spec, state, seed, test_spec: PreviousEpoc
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_000(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -799,9 +799,10 @@ def test_fcr_previous_epoch_000(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_001(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -817,9 +818,10 @@ def test_fcr_previous_epoch_001(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_002(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -835,9 +837,10 @@ def test_fcr_previous_epoch_002(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_003(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -853,9 +856,10 @@ def test_fcr_previous_epoch_003(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_004(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -871,9 +875,10 @@ def test_fcr_previous_epoch_004(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_005(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -889,9 +894,10 @@ def test_fcr_previous_epoch_005(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_006(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -907,9 +913,10 @@ def test_fcr_previous_epoch_006(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_007(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -925,9 +932,10 @@ def test_fcr_previous_epoch_007(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_008(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -943,9 +951,10 @@ def test_fcr_previous_epoch_008(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_009(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -961,9 +970,10 @@ def test_fcr_previous_epoch_009(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_010(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -979,9 +989,10 @@ def test_fcr_previous_epoch_010(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_011(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -997,9 +1008,10 @@ def test_fcr_previous_epoch_011(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_012(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -1015,9 +1027,10 @@ def test_fcr_previous_epoch_012(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_013(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -1033,9 +1046,10 @@ def test_fcr_previous_epoch_013(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_014(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -1051,9 +1065,10 @@ def test_fcr_previous_epoch_014(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_015(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -1069,9 +1084,10 @@ def test_fcr_previous_epoch_015(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_016(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -1087,9 +1103,10 @@ def test_fcr_previous_epoch_016(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_017(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -1105,9 +1122,10 @@ def test_fcr_previous_epoch_017(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_018(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -1123,9 +1141,10 @@ def test_fcr_previous_epoch_018(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_019(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -1141,9 +1160,10 @@ def test_fcr_previous_epoch_019(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_020(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -1159,9 +1179,10 @@ def test_fcr_previous_epoch_020(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_021(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -1177,9 +1198,10 @@ def test_fcr_previous_epoch_021(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_022(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -1195,9 +1217,10 @@ def test_fcr_previous_epoch_022(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_023(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -1213,9 +1236,10 @@ def test_fcr_previous_epoch_023(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_024(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -1231,9 +1255,10 @@ def test_fcr_previous_epoch_024(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_025(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -1249,9 +1274,10 @@ def test_fcr_previous_epoch_025(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_026(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -1267,9 +1293,10 @@ def test_fcr_previous_epoch_026(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_027(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -1285,9 +1312,10 @@ def test_fcr_previous_epoch_027(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_028(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -1303,9 +1331,10 @@ def test_fcr_previous_epoch_028(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_029(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -1321,9 +1350,10 @@ def test_fcr_previous_epoch_029(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_030(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -1339,9 +1369,10 @@ def test_fcr_previous_epoch_030(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_031(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -1357,9 +1388,10 @@ def test_fcr_previous_epoch_031(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_032(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -1375,9 +1407,10 @@ def test_fcr_previous_epoch_032(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_033(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -1393,9 +1426,10 @@ def test_fcr_previous_epoch_033(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_034(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -1411,9 +1445,10 @@ def test_fcr_previous_epoch_034(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_035(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -1429,9 +1464,10 @@ def test_fcr_previous_epoch_035(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_036(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -1447,9 +1483,10 @@ def test_fcr_previous_epoch_036(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_037(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -1465,9 +1502,10 @@ def test_fcr_previous_epoch_037(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_038(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -1483,9 +1521,10 @@ def test_fcr_previous_epoch_038(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_039(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -1501,9 +1540,10 @@ def test_fcr_previous_epoch_039(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_040(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -1519,9 +1559,10 @@ def test_fcr_previous_epoch_040(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_041(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -1537,9 +1578,10 @@ def test_fcr_previous_epoch_041(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_042(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -1555,9 +1597,10 @@ def test_fcr_previous_epoch_042(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_043(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -1573,9 +1616,10 @@ def test_fcr_previous_epoch_043(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_044(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -1591,9 +1635,10 @@ def test_fcr_previous_epoch_044(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_045(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -1609,9 +1654,10 @@ def test_fcr_previous_epoch_045(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_046(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -1627,9 +1673,10 @@ def test_fcr_previous_epoch_046(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_047(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -1645,9 +1692,10 @@ def test_fcr_previous_epoch_047(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_048(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -1663,9 +1711,10 @@ def test_fcr_previous_epoch_048(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_049(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -1681,9 +1730,10 @@ def test_fcr_previous_epoch_049(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_050(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -1699,9 +1749,10 @@ def test_fcr_previous_epoch_050(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_051(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -1717,9 +1768,10 @@ def test_fcr_previous_epoch_051(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_052(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -1735,9 +1787,10 @@ def test_fcr_previous_epoch_052(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_053(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -1753,9 +1806,10 @@ def test_fcr_previous_epoch_053(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_054(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -1771,9 +1825,10 @@ def test_fcr_previous_epoch_054(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_055(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -1789,9 +1844,10 @@ def test_fcr_previous_epoch_055(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_056(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -1807,9 +1863,10 @@ def test_fcr_previous_epoch_056(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_057(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -1825,9 +1882,10 @@ def test_fcr_previous_epoch_057(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_058(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -1843,9 +1901,10 @@ def test_fcr_previous_epoch_058(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_059(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -1861,9 +1920,10 @@ def test_fcr_previous_epoch_059(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_060(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -1879,9 +1939,10 @@ def test_fcr_previous_epoch_060(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_061(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -1897,9 +1958,10 @@ def test_fcr_previous_epoch_061(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_062(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -1915,9 +1977,10 @@ def test_fcr_previous_epoch_062(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_063(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -1933,9 +1996,10 @@ def test_fcr_previous_epoch_063(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_064(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -1951,9 +2015,10 @@ def test_fcr_previous_epoch_064(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_065(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -1969,9 +2034,10 @@ def test_fcr_previous_epoch_065(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_066(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -1987,9 +2053,10 @@ def test_fcr_previous_epoch_066(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_067(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -2005,9 +2072,10 @@ def test_fcr_previous_epoch_067(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_068(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -2023,9 +2091,10 @@ def test_fcr_previous_epoch_068(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_069(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -2041,9 +2110,10 @@ def test_fcr_previous_epoch_069(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_070(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -2059,9 +2129,10 @@ def test_fcr_previous_epoch_070(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_071(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -2077,9 +2148,10 @@ def test_fcr_previous_epoch_071(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_072(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -2095,9 +2167,10 @@ def test_fcr_previous_epoch_072(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_073(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -2113,9 +2186,10 @@ def test_fcr_previous_epoch_073(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_074(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -2131,9 +2205,10 @@ def test_fcr_previous_epoch_074(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_075(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -2149,9 +2224,10 @@ def test_fcr_previous_epoch_075(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_076(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -2167,9 +2243,10 @@ def test_fcr_previous_epoch_076(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_077(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -2185,9 +2262,10 @@ def test_fcr_previous_epoch_077(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_078(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -2203,9 +2281,10 @@ def test_fcr_previous_epoch_078(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_079(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=True,
@@ -2221,9 +2300,10 @@ def test_fcr_previous_epoch_079(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_080(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -2239,9 +2319,10 @@ def test_fcr_previous_epoch_080(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_081(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -2257,9 +2338,10 @@ def test_fcr_previous_epoch_081(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_082(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -2275,9 +2357,10 @@ def test_fcr_previous_epoch_082(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_083(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -2293,9 +2376,10 @@ def test_fcr_previous_epoch_083(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_084(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -2311,9 +2395,10 @@ def test_fcr_previous_epoch_084(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_085(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -2329,9 +2414,10 @@ def test_fcr_previous_epoch_085(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_086(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -2347,9 +2433,10 @@ def test_fcr_previous_epoch_086(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_087(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -2365,9 +2452,10 @@ def test_fcr_previous_epoch_087(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_088(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -2383,9 +2471,10 @@ def test_fcr_previous_epoch_088(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_089(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -2401,9 +2490,10 @@ def test_fcr_previous_epoch_089(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_090(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -2419,9 +2509,10 @@ def test_fcr_previous_epoch_090(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_091(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -2437,9 +2528,10 @@ def test_fcr_previous_epoch_091(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_092(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -2455,9 +2547,10 @@ def test_fcr_previous_epoch_092(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_093(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -2473,9 +2566,10 @@ def test_fcr_previous_epoch_093(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_094(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -2491,9 +2585,10 @@ def test_fcr_previous_epoch_094(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_095(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -2509,9 +2604,10 @@ def test_fcr_previous_epoch_095(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_096(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -2527,9 +2623,10 @@ def test_fcr_previous_epoch_096(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_097(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -2545,9 +2642,10 @@ def test_fcr_previous_epoch_097(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_098(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -2563,9 +2661,10 @@ def test_fcr_previous_epoch_098(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_099(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -2581,9 +2680,10 @@ def test_fcr_previous_epoch_099(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_100(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -2599,9 +2699,10 @@ def test_fcr_previous_epoch_100(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_101(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -2617,9 +2718,10 @@ def test_fcr_previous_epoch_101(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_102(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -2635,9 +2737,10 @@ def test_fcr_previous_epoch_102(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_103(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -2653,9 +2756,10 @@ def test_fcr_previous_epoch_103(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_104(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -2671,9 +2775,10 @@ def test_fcr_previous_epoch_104(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_105(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -2689,9 +2794,10 @@ def test_fcr_previous_epoch_105(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_106(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,
@@ -2707,9 +2813,10 @@ def test_fcr_previous_epoch_106(spec, state):
 
 
 @only_generator("too slow")
-@with_all_phases_from_to(ALTAIR, GLOAS)
+@with_altair_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="too slow")
+@never_bls
 def test_fcr_previous_epoch_107(spec, state):
     test_spec = PreviousEpochTestSpecification(
         prev_head_ancestor=False,

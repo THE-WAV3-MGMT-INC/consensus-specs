@@ -10,8 +10,8 @@
   - [The gossip domain: gossipsub](#the-gossip-domain-gossipsub)
     - [Topics and messages](#topics-and-messages)
       - [Global topics](#global-topics)
-        - [`beacon_block`](#beacon_block)
-        - [`bls_to_execution_change`](#bls_to_execution_change)
+        - [Modified `beacon_block`](#modified-beacon_block)
+        - [New `bls_to_execution_change`](#new-bls_to_execution_change)
     - [Transitioning the gossip](#transitioning-the-gossip)
   - [The Req/Resp domain](#the-reqresp-domain)
     - [Messages](#messages)
@@ -36,7 +36,7 @@ specifications of previous upgrades, and assumes them as pre-requisite.
 
 ```python
 @dataclass
-class Seen(object):
+class Seen:
     proposer_slots: Set[Tuple[ValidatorIndex, Slot]]
     aggregator_epochs: Set[Tuple[ValidatorIndex, Epoch]]
     aggregate_data_roots: Dict[Root, Set[Tuple[boolean, ...]]]
@@ -95,7 +95,7 @@ Capella changes the type of the global beacon block topic and adds one global
 topic to propagate withdrawal credential change messages to all potential
 proposers of beacon blocks.
 
-###### `beacon_block`
+###### Modified `beacon_block`
 
 The *type* of the payload of this topic changes to the (modified)
 `SignedBeaconBlock` found in Capella. Specifically, this type changes with the
@@ -113,7 +113,7 @@ def validate_beacon_block_gossip(
     state: BeaconState,
     signed_beacon_block: SignedBeaconBlock,
     current_time_ms: uint64,
-    block_payload_statuses: Dict[Root, PayloadValidationStatus] = {},
+    block_payload_statuses: Dict[Root, PayloadValidationStatus],
 ) -> None:
     """
     Validate a SignedBeaconBlock for gossip propagation.
@@ -129,7 +129,7 @@ def validate_beacon_block_gossip(
 
     # [IGNORE] The block is from a slot greater than the latest finalized slot
     # (MAY choose to validate and store such blocks for additional purposes
-    # -- e.g. slashing detection, archive nodes, etc).
+    # -- e.g. slashing detection, archive nodes, etc)
     finalized_slot = compute_start_slot_at_epoch(store.finalized_checkpoint.epoch)
     if block.slot <= finalized_slot:
         raise GossipIgnore("block is not from a slot greater than the latest finalized slot")
@@ -193,11 +193,11 @@ def validate_beacon_block_gossip(
     if block.proposer_index != expected_proposer:
         raise GossipReject("block proposer_index does not match expected proposer")
 
-    # Mark this block as seen for this proposer/slot combination
+    # Mark this block as seen
     seen.proposer_slots.add((block.proposer_index, block.slot))
 ```
 
-###### `bls_to_execution_change`
+###### New `bls_to_execution_change`
 
 The `bls_to_execution_change` topic is used solely for propagating signed BLS to
 execution change messages on the network. Signed messages are sent in their

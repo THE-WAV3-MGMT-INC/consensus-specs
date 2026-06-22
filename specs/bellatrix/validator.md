@@ -41,7 +41,7 @@ specifications before continuing and use them as a reference throughout.
 
 ```python
 @dataclass
-class GetPayloadResponse(object):
+class GetPayloadResponse:
     execution_payload: ExecutionPayload
 ```
 
@@ -70,7 +70,7 @@ def get_pow_block_at_terminal_total_difficulty(
 
 ```python
 def get_terminal_pow_block(pow_chain: Dict[Hash32, PowBlock]) -> Optional[PowBlock]:
-    if TERMINAL_BLOCK_HASH != Hash32():
+    if TERMINAL_BLOCK_HASH != EMPTY_BLOCK_HASH:
         # Terminal block hash override takes precedence over terminal total difficulty
         if TERMINAL_BLOCK_HASH in pow_chain:
             return pow_chain[TERMINAL_BLOCK_HASH]
@@ -87,24 +87,24 @@ avoid requiring simple serialize hashing capabilities in the execution layer.
 
 ### `ExecutionEngine`
 
-*Note*: `get_payload` function is added to the `ExecutionEngine` protocol for
-use as a validator.
+*Note*: The `get_payload` function is added to the `ExecutionEngine` protocol
+for use as a validator.
 
 The body of this function is implementation dependent. The Engine API may be
 used to implement it with an external execution engine.
 
 #### `get_payload`
 
-Given the `payload_id`, `get_payload` returns `GetPayloadResponse` with the most
-recent version of the execution payload that has been built since the
-corresponding call to `notify_forkchoice_updated` method.
+*Note*: Given the `payload_id`, the `get_payload` function returns
+`GetPayloadResponse` with the most recent version of the execution payload that
+has been built since the corresponding call to `notify_forkchoice_updated`
+method.
 
 ```python
 def get_payload(self: ExecutionEngine, payload_id: PayloadId) -> GetPayloadResponse:
     """
-    Return ``GetPayloadResponse`` object.
+    Return ExecutionPayload object.
     """
-    ...
 ```
 
 ## Beacon chain responsibilities
@@ -152,7 +152,7 @@ def prepare_execution_payload(
 ) -> Optional[PayloadId]:
     if not is_merge_transition_complete(state):
         assert pow_chain is not None
-        is_terminal_block_hash_set = TERMINAL_BLOCK_HASH != Hash32()
+        is_terminal_block_hash_set = TERMINAL_BLOCK_HASH != EMPTY_BLOCK_HASH
         is_activation_epoch_reached = (
             get_current_epoch(state) >= TERMINAL_BLOCK_HASH_ACTIVATION_EPOCH
         )

@@ -19,6 +19,7 @@
       - [Signed execution payload bid](#signed-execution-payload-bid)
       - [Payload attestations](#payload-attestations)
       - [Parent execution requests](#parent-execution-requests)
+      - [Execution requests](#execution-requests)
       - [ExecutionPayload](#executionpayload)
       - [Voluntary exits](#voluntary-exits)
   - [Payload timeliness attestation](#payload-timeliness-attestation)
@@ -43,6 +44,7 @@ validator" to implement Gloas.
 | `AGGREGATE_DUE_BPS_GLOAS`     | `uint64(5000)` | basis points | 50% of `SLOT_DURATION_MS` |
 | `SYNC_MESSAGE_DUE_BPS_GLOAS`  | `uint64(2500)` | basis points | 25% of `SLOT_DURATION_MS` |
 | `CONTRIBUTION_DUE_BPS_GLOAS`  | `uint64(5000)` | basis points | 50% of `SLOT_DURATION_MS` |
+| `PAYLOAD_DUE_BPS`             | `uint64(7500)` | basis points | 75% of `SLOT_DURATION_MS` |
 | `PAYLOAD_ATTESTATION_DUE_BPS` | `uint64(7500)` | basis points | 75% of `SLOT_DURATION_MS` |
 
 ## Validator assignment
@@ -127,9 +129,9 @@ A validator MAY broadcast `SignedProposerPreferences` messages to the
 `get_upcoming_proposal_slots(state, validator_index)`. These include any future
 proposal slots within the proposer lookahead, i.e. the current epoch up to
 `MIN_SEED_LOOKAHEAD` epochs ahead. This allows builders to construct execution
-payloads with the validator's preferred `fee_recipient` and `gas_limit`. If a
-validator does not broadcast a `SignedProposerPreferences` message, this implies
-that the validator will not accept any trustless bids for that slot.
+payloads with the validator's preferred `fee_recipient` and `target_gas_limit`.
+If a validator does not broadcast a `SignedProposerPreferences` message, this
+implies that the validator will not accept any trustless bids for that slot.
 
 ```python
 def get_upcoming_proposal_slots(
@@ -161,8 +163,8 @@ To construct each `SignedProposerPreferences`:
 4. Set `preferences.validator_index` to the validator's index.
 5. Set `preferences.fee_recipient` to the execution address where the validator
    wishes to receive the builder payment.
-6. Set `preferences.gas_limit` to the validator's preferred gas limit for this
-   execution payload.
+6. Set `preferences.target_gas_limit` to the validator's preferred gas limit for
+   this execution payload.
 7. Instantiate a new `SignedProposerPreferences` object as `signed_preferences`.
 8. Set `signed_preferences.message` to `preferences`.
 9. Set `signed_preferences.signature` to the result of
@@ -180,6 +182,11 @@ def get_proposer_preferences_signature(
 ```
 
 #### Constructing the `BeaconBlockBody`
+
+Let `head = get_head(store)`. A proposer may set
+`head = get_proposer_head(store, head, slot)` if proposer re-orgs are
+implemented and enabled. Let `head` be the parent node the proposer builds on,
+from which `state` is derived.
 
 ##### Signed execution payload bid
 
@@ -201,13 +208,15 @@ top of a `state` MUST take the following actions in order to construct the
   - The `bid.slot` is for the proposal block slot.
   - The `bid.parent_block_hash` equals
     `state.latest_execution_payload_bid.block_hash` if
-    `should_extend_payload(store, block.parent_root)` is true, otherwise
+    `should_build_on_full(store, head)` is true, otherwise
     `state.latest_execution_payload_bid.parent_block_hash`.
   - The `bid.parent_block_root` equals the current block's `parent_root`.
+  - The `bid.prev_randao` equals
+    `get_randao_mix(state, get_current_epoch(state))`.
 - Select one bid and set
   `block.body.signed_execution_payload_bid = signed_execution_payload_bid`.
 
-*Note:* The execution address encoded in the `fee_recipient` field in the
+*Note*: The execution address encoded in the `fee_recipient` field in the
 `signed_execution_payload_bid.message` will receive the builder payment.
 
 ##### Payload attestations
@@ -235,36 +244,111 @@ parent's execution payload. The proposer constructs this field as follows:
 
 - If the parent block is pre-Gloas (first Gloas block), set
   `parent_execution_requests` to an empty `ExecutionRequests()`.
-- If `should_extend_payload(store, block.parent_root)` is true (the proposer is
+- If `should_build_on_full(store, head)` returns `True` (the proposer is
   building on the parent's full payload), set `parent_execution_requests` to
-  `store.payloads[block.parent_root].execution_requests`.
+  `store.payloads[head.root].execution_requests`.
 - Otherwise (the proposer is building on the parent's empty variant), set
   `parent_execution_requests` to an empty `ExecutionRequests()`.
 
+##### Execution requests
+
+*Note*: The function `get_execution_requests` is modified to parse the builder
+deposit requests and builder exit requests.
+
+```python
+def get_execution_requests(execution_requests_list: Sequence[bytes]) -> ExecutionRequests:
+    deposits = []
+    withdrawals = []
+    consolidations = []
+    # [New in Gloas:EIP8282]
+    builder_deposits = []
+    # [New in Gloas:EIP8282]
+    builder_exits = []
+
+    request_types = [
+        DEPOSIT_REQUEST_TYPE,
+        WITHDRAWAL_REQUEST_TYPE,
+        CONSOLIDATION_REQUEST_TYPE,
+        # [New in Gloas:EIP8282]
+        BUILDER_DEPOSIT_REQUEST_TYPE,
+        # [New in Gloas:EIP8282]
+        BUILDER_EXIT_REQUEST_TYPE,
+    ]
+
+    prev_request_type = None
+    for request in execution_requests_list:
+        request_type, request_data = request[0:1], request[1:]
+
+        # Check that the request type is valid
+        assert request_type in request_types
+        # Check that the request data is not empty
+        assert len(request_data) != 0
+        # Check that requests are in strictly ascending order
+        # Each successive type must be greater than the last with no duplicates
+        assert prev_request_type is None or prev_request_type < request_type
+        prev_request_type = request_type
+
+        if request_type == DEPOSIT_REQUEST_TYPE:
+            deposits = ssz_deserialize(
+                List[DepositRequest, MAX_DEPOSIT_REQUESTS_PER_PAYLOAD], request_data
+            )
+        elif request_type == WITHDRAWAL_REQUEST_TYPE:
+            withdrawals = ssz_deserialize(
+                List[WithdrawalRequest, MAX_WITHDRAWAL_REQUESTS_PER_PAYLOAD], request_data
+            )
+        elif request_type == CONSOLIDATION_REQUEST_TYPE:
+            consolidations = ssz_deserialize(
+                List[ConsolidationRequest, MAX_CONSOLIDATION_REQUESTS_PER_PAYLOAD], request_data
+            )
+        # [New in Gloas:EIP8282]
+        elif request_type == BUILDER_DEPOSIT_REQUEST_TYPE:
+            builder_deposits = ssz_deserialize(
+                List[BuilderDepositRequest, MAX_BUILDER_DEPOSIT_REQUESTS_PER_PAYLOAD],
+                request_data,
+            )
+        # [New in Gloas:EIP8282]
+        elif request_type == BUILDER_EXIT_REQUEST_TYPE:
+            builder_exits = ssz_deserialize(
+                List[BuilderExitRequest, MAX_BUILDER_EXIT_REQUESTS_PER_PAYLOAD], request_data
+            )
+
+    return ExecutionRequests(
+        deposits=deposits,
+        withdrawals=withdrawals,
+        consolidations=consolidations,
+        # [New in Gloas:EIP8282]
+        builder_deposits=builder_deposits,
+        # [New in Gloas:EIP8282]
+        builder_exits=builder_exits,
+    )
+```
+
 ##### ExecutionPayload
 
-*Note*: `prepare_execution_payload` is modified in Gloas to take `store` as an
-additional parameter. It consults `should_extend_payload` to decide whether to
-build on the parent's full payload or its empty variant, selecting both the
-withdrawals source and the execution head for the new payload. When building on
-a full parent, `apply_parent_execution_payload` is called so that withdrawals
-are computed against the post-processing state.
+*Note*: `prepare_execution_payload` is modified to build on the parent's full
+payload or its empty variant, as decided by `should_build_on_full(store, head)`,
+which determines the withdrawals source and the execution head for the new
+payload. When building on a full parent, `apply_parent_execution_payload` is
+called so that withdrawals are computed against the post-processing state.
 
 ```python
 def prepare_execution_payload(
     # [New in Gloas:EIP7732]
     store: Store,
+    # [New in Gloas:EIP7732]
+    head: ForkChoiceNode,
     state: BeaconState,
     safe_block_hash: Hash32,
     finalized_block_hash: Hash32,
     suggested_fee_recipient: ExecutionAddress,
+    # [New in Gloas]
+    target_gas_limit: uint64,
     execution_engine: ExecutionEngine,
 ) -> Optional[PayloadId]:
     # [New in Gloas:EIP7732]
     parent_bid = state.latest_execution_payload_bid
-    parent_root = hash_tree_root(state.latest_block_header)
-    if should_extend_payload(store, parent_root):
-        envelope = store.payloads[parent_root]
+    if should_build_on_full(store, head):
+        envelope = store.payloads[head.root]
         # Make a copy of the state to avoid mutability issues
         state = copy(state)
         # Apply parent payload before computing withdrawals
@@ -285,6 +369,8 @@ def prepare_execution_payload(
         parent_beacon_block_root=hash_tree_root(state.latest_block_header),
         # [New in Gloas:EIP7843]
         slot_number=state.slot,
+        # [New in Gloas]
+        target_gas_limit=target_gas_limit,
     )
     return execution_engine.notify_forkchoice_updated(
         # [Modified in Gloas:EIP7732]
@@ -330,8 +416,9 @@ The validator creates `payload_attestation_message` as follows:
   for the assigned slot.
 - Set `data.slot` to be the assigned slot.
 - If a previously seen `SignedExecutionPayloadEnvelope` references the block
-  with root `data.beacon_block_root`, set `data.payload_present` to `True`;
-  otherwise, set `data.payload_present` to `False`.
+  with root `data.beacon_block_root`, and it was seen before
+  `get_payload_due_ms()` milliseconds into the slot, set `data.payload_present`
+  to `True`; otherwise, set `data.payload_present` to `False`.
 - Set `data.blob_data_available` to `is_data_available(data.beacon_block_root)`.
 - Set `payload_attestation_message.validator_index = validator_index` where
   `validator_index` is the validator chosen to submit. The private key mapping

@@ -45,7 +45,7 @@ specifications before continuing and use them as a reference throughout.
 
 ```python
 @dataclass
-class BlobsBundle(object):
+class BlobsBundle:
     commitments: List[KZGCommitment, MAX_BLOB_COMMITMENTS_PER_BLOCK]
     proofs: List[KZGProof, MAX_BLOB_COMMITMENTS_PER_BLOCK]
     blobs: List[Blob, MAX_BLOB_COMMITMENTS_PER_BLOCK]
@@ -55,7 +55,7 @@ class BlobsBundle(object):
 
 ```python
 @dataclass
-class GetPayloadResponse(object):
+class GetPayloadResponse:
     execution_payload: ExecutionPayload
     block_value: uint256
     # [New in Deneb:EIP4844]
@@ -81,17 +81,14 @@ def compute_signed_block_header(signed_block: SignedBeaconBlock) -> SignedBeacon
 
 #### Modified `get_payload`
 
-Given the `payload_id`, `get_payload` returns the most recent version of the
-execution payload that has been built since the corresponding call to
-`notify_forkchoice_updated` method.
+*Note*: The `get_payload` function returns the updated `GetPayloadResponse`
+object.
 
 ```python
 def get_payload(self: ExecutionEngine, payload_id: PayloadId) -> GetPayloadResponse:
     """
-    Return ExecutionPayload, uint256, BlobsBundle objects.
+    Return ExecutionPayload, uint256, and BlobsBundle objects.
     """
-    # pylint: disable=unused-argument
-    ...
 ```
 
 ## Beacon chain responsibilities

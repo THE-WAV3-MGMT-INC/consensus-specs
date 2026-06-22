@@ -35,11 +35,7 @@ def _should_justify_epoch(parents, current_justifications, previous_justificatio
         return True
 
     # Check if any child of the block justifies the epoch
-    for c in (b for b, p in enumerate(parents) if p == block):
-        if previous_justifications[c]:
-            return True
-
-    return False
+    return any(previous_justifications[c] for c in (b for b, p in enumerate(parents) if p == block))
 
 
 def _generate_filter_block_tree(
@@ -53,6 +49,14 @@ def _generate_filter_block_tree(
     rnd: random.Random,
     debug,
 ) -> ([], [], object, object):
+    """
+    Return target block data only for blocks produced by this block tree.
+
+    When `target_block == 0`, the target is the anchor block. The anchor tip has
+    already been advanced to the next epoch, so it is not the exact post-state of
+    the anchor block. In that case the returned `target_signed_block` and
+    `target_post_state` are both None.
+    """
     JUSTIFYING_SLOT = 2 * spec.SLOTS_PER_EPOCH // 3 + 1
     JUSTIFYING_SLOT_COUNT = spec.SLOTS_PER_EPOCH - JUSTIFYING_SLOT
 
@@ -84,7 +88,7 @@ def _generate_filter_block_tree(
         spec, genesis_state, anchor_epoch, debug
     )
 
-    block_tips = [None for _ in range(0, len(block_epochs))]
+    block_tips = [None for _ in range(len(block_epochs))]
     target_signed_block = None
     target_post_state = None
     # Initialize with the anchor block
@@ -96,7 +100,7 @@ def _generate_filter_block_tree(
             continue
 
         # Case 2. Blocks are from disjoint subtrees -- not supported yet
-        assert len(set([a for i, a in enumerate(parents) if i in current_blocks])) == 1, (
+        assert len({a for i, a in enumerate(parents) if i in current_blocks}) == 1, (
             "Disjoint trees are not supported"
         )
 
@@ -153,7 +157,7 @@ def _generate_filter_block_tree(
         suffix_window_len = spec.SLOTS_PER_EPOCH - JUSTIFYING_SLOT
 
         remaining_items = [b for b in current_blocks if b not in justifying_blocks]
-        remaining_items = remaining_items + [-1 for _ in range(0, empty_slot_count)]
+        remaining_items = remaining_items + [-1 for _ in range(empty_slot_count)]
         rnd.shuffle(remaining_items)
 
         suffix_extra_count = suffix_window_len - len(justifying_blocks)
@@ -200,7 +204,7 @@ def _generate_filter_block_tree(
                 # Propose block
                 new_block, state, _, _, _ = produce_block(spec, state, block_attestations)
                 signed_blocks.append(new_block)
-                if block == target_block and is_post_gloas(spec):
+                if block == target_block:
                     target_signed_block = new_block
                     target_post_state = state.copy()
 
@@ -236,7 +240,7 @@ def _generate_filter_block_tree(
                 block_tips[block] = BranchTip(
                     state,
                     not_included_attestations,
-                    [*range(0, len(state.validators))],
+                    [*range(len(state.validators))],
                     check_up_state.current_justified_checkpoint,
                 )
 
@@ -389,7 +393,8 @@ def gen_block_cover_test_data(spec, state, model_params, debug, seed) -> (FCTest
         post_block_tips[target_block].beacon_state.latest_block_header
     )
     if is_post_gloas(spec):
-        if target_signed_block is not None and target_post_state is not None:
+        if target_signed_block is not None:
+            assert target_post_state is not None
             envelope_mode = rnd.choice(["none", "valid"])
             if envelope_mode == "valid":
                 envelopes.append(
@@ -407,6 +412,8 @@ def gen_block_cover_test_data(spec, state, model_params, debug, seed) -> (FCTest
                     rnd,
                 ):
                     payload_attestations.append(ProtocolMessage(ptc_message))
+        else:
+            assert target_block == 0
 
     test_data.envelopes = envelopes
     test_data.payload_atts = payload_attestations
@@ -474,4 +481,4 @@ def run_sanity_checks(spec, store, model_params, target_block_root):
         or predicates["block_vse_eq_store_je"]
         or predicates["block_vse_plus_two_ge_curr_e"]
     ):
-        assert target_block_root in spec.get_filtered_block_tree(store).keys()
+        assert target_block_root in spec.get_filtered_block_tree(store)

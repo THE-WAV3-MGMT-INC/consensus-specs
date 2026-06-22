@@ -120,7 +120,6 @@ def test_prepare_execution_payload__extend_payload(spec, state):
     run_on_execution_payload_envelope(spec, store, envelope)
 
     assert spec.is_payload_verified(store, block_root)
-    assert spec.should_extend_payload(store, block_root)
 
     # Advance to the proposal slot before modifying balances. process_slots
     # fills latest_block_header.state_root using the current state hash, so
@@ -144,10 +143,12 @@ def test_prepare_execution_payload__extend_payload(spec, state):
     parent_bid = proposal_state.latest_execution_payload_bid
     payload_id = spec.prepare_execution_payload(
         store=store,
+        head=spec.get_head(store),
         state=proposal_state,
         safe_block_hash=spec.Hash32(),
         finalized_block_hash=spec.Hash32(),
         suggested_fee_recipient=spec.ExecutionAddress(),
+        target_gas_limit=spec.uint64(60_000_000),
         execution_engine=engine,
     )
 
@@ -173,7 +174,6 @@ def test_prepare_execution_payload__no_payload_verified(spec, state):
     store, _, block_root = _add_block_to_store(spec, state)
 
     assert not spec.is_payload_verified(store, block_root)
-    assert not spec.should_extend_payload(store, block_root)
 
     proposal_state = _advance_to_proposal_slot(spec, state, store)
 
@@ -181,10 +181,12 @@ def test_prepare_execution_payload__no_payload_verified(spec, state):
     parent_bid = proposal_state.latest_execution_payload_bid
     payload_id = spec.prepare_execution_payload(
         store=store,
+        head=spec.get_head(store),
         state=proposal_state,
         safe_block_hash=spec.Hash32(),
         finalized_block_hash=spec.Hash32(),
         suggested_fee_recipient=spec.ExecutionAddress(),
+        target_gas_limit=spec.uint64(60_000_000),
         execution_engine=engine,
     )
 
@@ -204,10 +206,12 @@ def test_prepare_execution_payload__extend_payload_does_not_mutate_state(spec, s
     engine = CaptureEngine()
     spec.prepare_execution_payload(
         store=store,
+        head=spec.get_head(store),
         state=proposal_state,
         safe_block_hash=spec.Hash32(),
         finalized_block_hash=spec.Hash32(),
         suggested_fee_recipient=spec.ExecutionAddress(),
+        target_gas_limit=spec.uint64(60_000_000),
         execution_engine=engine,
     )
 
@@ -223,10 +227,12 @@ def test_prepare_execution_payload__payload_attributes(spec, state):
     engine = CaptureEngine()
     spec.prepare_execution_payload(
         store=store,
+        head=spec.get_head(store),
         state=proposal_state,
         safe_block_hash=spec.Hash32(),
         finalized_block_hash=spec.Hash32(),
         suggested_fee_recipient=spec.ExecutionAddress(),
+        target_gas_limit=spec.uint64(60_000_000),
         execution_engine=engine,
     )
 
@@ -238,6 +244,7 @@ def test_prepare_execution_payload__payload_attributes(spec, state):
     assert attrs.parent_beacon_block_root == proposal_state.latest_block_header.hash_tree_root()
     assert attrs.slot_number == proposal_state.slot
     assert attrs.suggested_fee_recipient == spec.ExecutionAddress()
+    assert attrs.target_gas_limit == spec.uint64(60_000_000)
 
 
 @with_phases([GLOAS])
@@ -253,10 +260,12 @@ def test_prepare_execution_payload__block_passes_state_transition(spec, state):
     engine = CaptureEngine()
     spec.prepare_execution_payload(
         store=store,
+        head=spec.get_head(store),
         state=proposal_state,
         safe_block_hash=spec.Hash32(),
         finalized_block_hash=spec.Hash32(),
         suggested_fee_recipient=spec.ExecutionAddress(),
+        target_gas_limit=spec.uint64(60_000_000),
         execution_engine=engine,
     )
     prepared_withdrawals = list(engine.payload_attributes.withdrawals)

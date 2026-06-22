@@ -28,6 +28,7 @@ from .helpers import (
     BranchTip,
     build_random_payload_attestation_messages,
     FCTestData,
+    get_dependent_root,
     is_attestation_eligible_for_block,
     produce_block,
     ProtocolMessage,
@@ -215,11 +216,7 @@ def _any_change_to_validator_partitions(spec, sm_links, current_epoch, anchor_ep
     if previous_epoch == anchor_epoch:
         return True
 
-    for l in sm_links:
-        if l.target == current_epoch or l.target == previous_epoch:
-            return True
-
-    return False
+    return any(l.target == current_epoch or l.target == previous_epoch for l in sm_links)
 
 
 def _generate_sm_link_tree(
@@ -236,13 +233,13 @@ def _generate_sm_link_tree(
         3. Randomly sample all active validators between a set of forks that are being advanced in the epoch.
            Validator partitions are disjoint and are changing only at the epoch boundary.
            If no new branches are created in the current epoch then partitions from the previous epoch will be used
-           to advahce the state of every fork to the next epoch.
+           to advance the state of every fork to the next epoch.
         4. Advance every fork to the next epoch respecting a validator partition assigned to it in the current epoch.
            Preserve attestations produced but not yet included on chain for potential inclusion in the next epoch.
         5. Justify required checkpoints by moving the majority of validators to the justifying fork,
            this is taken into account by step (3).
 
-    :return: Sequence of signed blocks oredered by a slot number.
+    :return: Sequence of signed blocks ordered by a slot number.
     """
     assert any(sm_links)
 
@@ -283,7 +280,7 @@ def _generate_sm_link_tree(
             partitions = _compute_validator_partitions(
                 spec, branch_tips, current_epoch_sm_links, current_epoch, rnd
             )
-            for l in partitions.keys():
+            for l in partitions:
                 old_tip_state = branch_tips[l]
                 new_tip_state = BranchTip(
                     old_tip_state.beacon_state,
@@ -507,11 +504,11 @@ def _disseminate(
     """
     choice = rnd.randint(0, 99)
     if choice < off_chain_rate:
-        off_chain_list.append(ProtocolMessage(message, True))
+        off_chain_list.append(ProtocolMessage(message, valid=True))
     elif choice < off_chain_rate + on_chain_rate:
         in_block_list.append(message)
     else:
-        off_chain_list.append(ProtocolMessage(message, True))
+        off_chain_list.append(ProtocolMessage(message, valid=True))
         in_block_list.append(message)
 
 
@@ -534,14 +531,14 @@ class ProtocolState:
         self.signed_envelope_messages.append(ProtocolMessage(envelope, valid))
 
     def add_invalid_off_chain_attestation(self, attestation):
-        self.out_of_block_attestation_messages.append(ProtocolMessage(attestation, False))
+        self.out_of_block_attestation_messages.append(ProtocolMessage(attestation, valid=False))
 
     def add_invalid_off_chain_payload_attestation(self, ptc_message):
-        self.out_of_block_pa_messages.append(ProtocolMessage(ptc_message, False))
+        self.out_of_block_pa_messages.append(ProtocolMessage(ptc_message, valid=False))
 
     def add_invalid_off_chain_attester_slashing(self, attester_slashing):
         self.out_of_block_attester_slashing_messages.append(
-            ProtocolMessage(attester_slashing, False)
+            ProtocolMessage(attester_slashing, valid=False)
         )
 
     def maybe_invalidate_attestation(self, rnd, attestation, with_invalid_messages):
@@ -597,11 +594,15 @@ class ProtocolState:
 
 
 class RuntimeState:
-    def __init__(self, anchor_tip: BranchTip):
+    def __init__(self, spec, anchor_tip: BranchTip):
+        self.spec = spec
         self.current_slot = anchor_tip.beacon_state.slot
         self.post_states = [anchor_tip.beacon_state.copy()]
         self.block_tree_tips = {0}
         self.payload_known_block_indices = set()
+        self.att_dependent_roots = {}
+        for att in anchor_tip.attestations:
+            self.apply_att_dependent_root(anchor_tip.beacon_state, att)
 
     def append_post_state(self, post_state):
         self.post_states.append(post_state)
@@ -611,6 +612,12 @@ class RuntimeState:
         self.block_tree_tips.discard(parent_index)
         self.block_tree_tips.add(block_index)
 
+    def apply_att_dependent_root(self, state, attestation):
+        data = attestation.data
+        self.att_dependent_roots[(data.beacon_block_root, data.slot)] = get_dependent_root(
+            self.spec, state, data.slot
+        )
+
 
 class StateCache:
     def __init__(self, spec, runtime: RuntimeState):
@@ -619,7 +626,7 @@ class StateCache:
         self.cache_key = None
         self.cached_state = None
 
-    def get_state_by_block_index(self, index):
+    def get_state_by_block_index_and_slot(self, index):
         cache_key = (index, self.runtime.current_slot)
         if self.cache_key == cache_key:
             return self.cached_state.copy()
@@ -632,14 +639,14 @@ class StateCache:
 
 
 class CommitteeAssignments:
-    def __init__(self, spec, get_state_by_block_index):
+    def __init__(self, spec, get_state_by_block_index_and_slot):
         self.spec = spec
-        self.get_state_by_block_index = get_state_by_block_index
+        self.get_state_by_block_index_and_slot = get_state_by_block_index_and_slot
         self.slot_assignments = {}
 
     def assign_voters_to_slots(self, epoch):
         epoch_start_slot = self.spec.compute_start_slot_at_epoch(epoch)
-        epoch_state = self.get_state_by_block_index(-1)
+        epoch_state = self.get_state_by_block_index_and_slot(-1)
         committee_count_per_slot = self.spec.get_committee_count_per_slot(epoch_state, epoch)
         for slot in range(epoch_start_slot, epoch_start_slot + self.spec.SLOTS_PER_EPOCH):
             assignments = []
@@ -757,13 +764,15 @@ def _generate_block_tree(
     with_invalid_messages,
 ) -> ([], [], [], [], []):
     protocol = ProtocolState(spec, anchor_tip)
-    runtime = RuntimeState(anchor_tip)
+    runtime = RuntimeState(spec, anchor_tip)
     # Tracks every validator selected for a generated attester slashing in this
     # scenario, so later selections cannot target the same validator again.
     validators_to_be_slashed = set()
     block_edges = iter(enumerate(block_parents[1:], start=1))
     state_cache = StateCache(spec, runtime)
-    committee_assignments = CommitteeAssignments(spec, state_cache.get_state_by_block_index)
+    committee_assignments = CommitteeAssignments(
+        spec, state_cache.get_state_by_block_index_and_slot
+    )
 
     def choose_attested_block_index(tips, block_parents):
         attesting_block_index = rnd.choice(tips)
@@ -815,11 +824,18 @@ def _generate_block_tree(
         # contained by invalid block.
         signed_block, _, _, _, _ = produce_block(spec, parent_state, [], [], [])
         _spoil_block(spec, rnd, signed_block)
-        protocol.add_signed_block(signed_block, False)
+        protocol.add_signed_block(signed_block, valid=False)
         runtime.append_post_state(parent_state)
         return signed_block, parent_state, None
 
     def produce_valid_block(parent_state, parent_index, block_index):
+        def shuffling_compatibility_filter(a):
+            block_dependent_root = get_dependent_root(spec, parent_state, a.data.slot)
+            att_dependent_root = runtime.att_dependent_roots[
+                (a.data.beacon_block_root, a.data.slot)
+            ]
+            return block_dependent_root == att_dependent_root
+
         (
             candidate_attestations,
             ignored_attestations,
@@ -837,6 +853,7 @@ def _generate_block_tree(
             candidate_attestations,
             protocol.in_block_attester_slashings,
             protocol.in_block_pa_messages,
+            custom_att_filter_fn=shuffling_compatibility_filter,
         )
 
         copied_included_attestations = _subtract_items_once(
@@ -846,7 +863,7 @@ def _generate_block_tree(
             ignored_attestations + not_included_attestations + copied_included_attestations
         )
 
-        protocol.add_signed_block(signed_block, True)
+        protocol.add_signed_block(signed_block, valid=True)
         runtime.apply_new_block(parent_index, block_index, post_state)
         return signed_block, post_state, block_index
 
@@ -855,23 +872,23 @@ def _generate_block_tree(
             return None, None, None
 
         block_index, parent_index = block_edge
-        parent_state = state_cache.get_state_by_block_index(parent_index)
+        pre_state = state_cache.get_state_by_block_index_and_slot(parent_index)
 
         protocol.in_block_attestations = [
             a
             for a in protocol.in_block_attestations
-            if is_attestation_eligible_for_block(spec, parent_state, a)
+            if is_attestation_eligible_for_block(spec, pre_state, a)
         ]
 
-        proposer = spec.get_beacon_proposer_index(parent_state)
+        proposer = spec.get_beacon_proposer_index(pre_state)
 
-        if parent_state.validators[proposer].slashed or (
+        if pre_state.validators[proposer].slashed or (
             with_invalid_messages and _roll(rnd, INVALID_MESSAGES_RATE)
         ):
-            signed_block, post_state, new_block_index = produce_invalid_block(parent_state)
+            signed_block, post_state, new_block_index = produce_invalid_block(pre_state)
         else:
             signed_block, post_state, new_block_index = produce_valid_block(
-                parent_state, parent_index, block_index
+                pre_state, parent_index, block_index
             )
 
         return signed_block, post_state, new_block_index
@@ -930,7 +947,7 @@ def _generate_block_tree(
         )
 
         for attesting_block_index, attesters in block_index_voters.items():
-            attesting_state = state_cache.get_state_by_block_index(attesting_block_index)
+            attesting_state = state_cache.get_state_by_block_index_and_slot(attesting_block_index)
             payload_index, att_payload_index_invalid = get_attestation_payload_index(
                 attesting_block_index, new_block_index, valid_execution_payload_sent
             )
@@ -938,9 +955,11 @@ def _generate_block_tree(
                 spec,
                 attesting_state,
                 attesting_state.slot,
-                lambda comm: set(comm) & attesters,
+                lambda comm, attesters=attesters: set(comm) & attesters,
                 payload_index=payload_index,
             )
+            if any(attestations_in_slot):
+                runtime.apply_att_dependent_root(attesting_state, attestations_in_slot[0])
 
             for attestation in attestations_in_slot:
                 if att_payload_index_invalid:
@@ -973,7 +992,7 @@ def _generate_block_tree(
         if not _roll(rnd, ATTESTER_SLASHINGS_RATE):
             return
 
-        state = state_cache.get_state_by_block_index(-1)
+        state = state_cache.get_state_by_block_index_and_slot(-1)
 
         assert len(validators_to_be_slashed) < len(state.validators)
         while True:

@@ -60,7 +60,6 @@ def is_inclusion_list_satisfied(
     Return ``True`` if and only if ``execution_payload`` satisfies the inclusion
     list constraints with respect to ``inclusion_list_transactions``.
     """
-    ...
 ```
 
 #### Modified `notify_forkchoice_updated`
@@ -92,13 +91,14 @@ def notify_forkchoice_updated(
 
 ```python
 @dataclass
-class PayloadAttributes(object):
+class PayloadAttributes:
     timestamp: uint64
     prev_randao: Bytes32
     suggested_fee_recipient: ExecutionAddress
     withdrawals: Sequence[Withdrawal]
     parent_beacon_block_root: Root
     slot_number: uint64
+    target_gas_limit: uint64
     # [New in Heze:EIP7805]
     inclusion_list_transactions: Sequence[Transaction]
 ```
@@ -110,7 +110,7 @@ inclusion list constraints.
 
 ```python
 @dataclass
-class Store(object):
+class Store:
     time: uint64
     genesis_time: uint64
     justified_checkpoint: Checkpoint
@@ -172,9 +172,9 @@ def get_forkchoice_store(anchor_state: BeaconState, anchor_block: BeaconBlock) -
 constraints SHOULD NOT be invalidated even if their associated `InclusionList`s
 have subsequently been pruned.
 
-*Note*: Invalid or equivocating `InclusionList`s received on the p2p network
-MUST NOT invalidate a payload that is otherwise valid and satisfies the
-inclusion list constraints.
+*Note*: Whether a payload satisfies the inclusion list constraints MUST NOT
+affect payload validation. A valid payload that fails to satisfy those
+constraints remains valid, but fork choice does not extend it.
 
 ```python
 def record_payload_inclusion_list_satisfaction(
@@ -219,14 +219,17 @@ not satisfy the inclusion list constraints.
 
 ```python
 def should_extend_payload(store: Store, root: Root) -> bool:
+    assert store.blocks[root].slot + 1 == get_current_slot(store)
     if not is_payload_verified(store, root):
         return False
     # [New in Heze:EIP7805]
     if not is_payload_inclusion_list_satisfied(store, root):
         return False
     proposer_root = store.proposer_boost_root
+    payload_is_timely = payload_timeliness(store, root, timely=True)
+    payload_data_is_available = payload_data_availability(store, root, available=True)
     return (
-        (is_payload_timely(store, root) and is_payload_data_available(store, root))
+        (payload_is_timely and payload_data_is_available)
         or proposer_root == Root()
         or store.blocks[proposer_root].parent_root != root
         or is_parent_node_full(store, store.blocks[proposer_root])

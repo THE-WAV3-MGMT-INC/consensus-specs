@@ -246,7 +246,7 @@ propagation.
 
 ```python
 @dataclass
-class Seen(object):
+class Seen:
     proposer_slots: Set[Tuple[ValidatorIndex, Slot]]
     aggregator_epochs: Set[Tuple[ValidatorIndex, Epoch]]
     aggregate_data_roots: Dict[Root, Set[Tuple[boolean, ...]]]
@@ -259,7 +259,7 @@ class Seen(object):
 #### `compute_fork_version`
 
 ```python
-def compute_fork_version(epoch: Epoch) -> Version:
+def compute_fork_version(epoch: Epoch) -> Version:  # noqa: ARG001
     """
     Return the fork version at the given ``epoch``.
     """
@@ -366,7 +366,7 @@ def is_non_strict_superset(
     """
     for prior_bits in seen_bits_set:
         is_superset = True
-        for prior_bit, new_bit in zip(prior_bits, new_bits):
+        for prior_bit, new_bit in zip(prior_bits, new_bits, strict=True):
             if new_bit and not prior_bit:
                 is_superset = False
                 break
@@ -567,7 +567,7 @@ def validate_beacon_block_gossip(
 
     # [IGNORE] The block is from a slot greater than the latest finalized slot
     # (MAY choose to validate and store such blocks for additional purposes
-    # -- e.g. slashing detection, archive nodes, etc).
+    # -- e.g. slashing detection, archive nodes, etc)
     finalized_slot = compute_start_slot_at_epoch(store.finalized_checkpoint.epoch)
     if block.slot <= finalized_slot:
         raise GossipIgnore("block is not from a slot greater than the latest finalized slot")
@@ -615,7 +615,7 @@ def validate_beacon_block_gossip(
     if block.proposer_index != expected_proposer:
         raise GossipReject("block proposer_index does not match expected proposer")
 
-    # Mark this block as seen for this proposer/slot combination
+    # Mark this block as seen
     seen.proposer_slots.add((block.proposer_index, block.slot))
 ```
 
@@ -829,7 +829,7 @@ def validate_proposer_slashing_gossip(
     if header_1 == header_2:
         raise GossipReject("headers are not different")
 
-    # [REJECT] The proposer index is valid
+    # [REJECT] The proposer index is a valid validator index
     if proposer_index >= len(state.validators):
         raise GossipReject("proposer index out of range")
 
@@ -931,8 +931,8 @@ def validate_beacon_attestation_gossip(
     store: Store,
     state: BeaconState,
     attestation: Attestation,
-    subnet_id: uint64,
     current_time_ms: uint64,
+    subnet_id: SubnetID,
 ) -> None:
     """
     Validate an Attestation for gossip propagation on a subnet.

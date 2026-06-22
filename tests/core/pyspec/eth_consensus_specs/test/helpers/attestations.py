@@ -172,6 +172,28 @@ def get_attestation_signature(spec, state, attestation_data, privkey):
     return bls.Sign(privkey, signing_root)
 
 
+def to_single_attestation(spec, state, attestation, attester_index=None):
+    """
+    Convert an Electra-style ``Attestation`` (with ``committee_bits``) into a
+    ``SingleAttestation`` signed by a single committee member. By default the
+    first member of the encoded committee is used.
+    """
+    assert is_post_electra(spec)
+    committee_indices = spec.get_committee_indices(attestation.committee_bits)
+    assert len(committee_indices) == 1
+    committee_index = committee_indices[0]
+    committee = spec.get_beacon_committee(state, attestation.data.slot, committee_index)
+    if attester_index is None:
+        attester_index = committee[0]
+    signature = get_attestation_signature(spec, state, attestation.data, privkeys[attester_index])
+    return spec.SingleAttestation(
+        committee_index=committee_index,
+        attester_index=attester_index,
+        data=attestation.data,
+        signature=signature,
+    )
+
+
 def compute_max_inclusion_slot(spec, attestation):
     if is_post_deneb(spec):
         next_epoch = spec.compute_epoch_at_slot(attestation.data.slot) + 1
@@ -246,7 +268,7 @@ def get_valid_attestations_at_slot(
     )
     for index in range(committees_per_slot):
 
-        def participants_filter(comm):
+        def participants_filter(comm, index=index):
             if participation_fn is None:
                 return comm
             else:
@@ -446,7 +468,7 @@ def prepare_state_with_attestations(spec, state, participation_fn=None):
                 spec.get_committee_count_per_slot(state, spec.get_current_epoch(state))
             ):
 
-                def temp_participants_filter(comm):
+                def temp_participants_filter(comm, committee_index=committee_index):
                     if participation_fn is None:
                         return comm
                     else:

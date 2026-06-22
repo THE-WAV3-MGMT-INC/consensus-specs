@@ -42,6 +42,7 @@ def prepare_signed_payload_attestation(
     slot=None,
     beacon_block_root=None,
     payload_present=True,
+    blob_data_available=False,
     attesting_indices=None,
     valid_signature=True,
     domain_epoch=None,
@@ -82,6 +83,7 @@ def prepare_signed_payload_attestation(
         beacon_block_root=beacon_block_root,
         slot=slot,
         payload_present=payload_present,
+        blob_data_available=blob_data_available,
     )
 
     # Create payload attestation
@@ -406,7 +408,7 @@ def test_process_payload_attestation_sampling_not_capped(spec, state):
         ptc_expected, accepted_at = _compute_selection_with_acceptance_iterations(
             spec, state, indices, seed, spec.PTC_SIZE
         )
-        for index, accepted_i in zip(ptc_expected, accepted_at):
+        for index, accepted_i in zip(ptc_expected, accepted_at, strict=False):
             if accepted_i > limit:
                 chosen_slot = slot
                 chosen_index = index

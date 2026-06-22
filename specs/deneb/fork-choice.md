@@ -5,9 +5,9 @@
 - [Introduction](#introduction)
 - [Helpers](#helpers)
   - [Modified `PayloadAttributes`](#modified-payloadattributes)
-  - [`is_data_available`](#is_data_available)
+  - [New `is_data_available`](#new-is_data_available)
 - [Handlers](#handlers)
-  - [`on_block`](#on_block)
+  - [Modified `on_block`](#modified-on_block)
 
 <!-- mdformat-toc end -->
 
@@ -23,7 +23,7 @@ This is the modification of the fork choice accompanying the Deneb upgrade.
 
 ```python
 @dataclass
-class PayloadAttributes(object):
+class PayloadAttributes:
     timestamp: uint64
     prev_randao: Bytes32
     suggested_fee_recipient: ExecutionAddress
@@ -32,7 +32,7 @@ class PayloadAttributes(object):
     parent_beacon_block_root: Root
 ```
 
-### `is_data_available`
+### New `is_data_available`
 
 *[New in Deneb:EIP4844]*
 
@@ -65,7 +65,7 @@ def is_data_available(
 
 ## Handlers
 
-### `on_block`
+### Modified `on_block`
 
 *Note*: The only modification is the addition of the blob data availability
 check.
@@ -101,15 +101,17 @@ def on_block(store: Store, signed_block: SignedBeaconBlock) -> None:
     # Make a copy of the state to avoid mutability issues
     state = copy(store.block_states[block.parent_root])
     block_root = hash_tree_root(block)
-    state_transition(state, signed_block, True)
+    state_transition(state, signed_block, validate_result=True)
 
+    # Compute head before applying the block
+    head = get_head(store)
     # Add new block to the store
     store.blocks[block_root] = block
     # Add new state for this block to the store
     store.block_states[block_root] = state
 
     record_block_timeliness(store, block_root)
-    update_proposer_boost_root(store, block_root)
+    update_proposer_boost_root(store, head.root, block_root)
 
     # Update checkpoints in store if necessary
     update_checkpoints(store, state.current_justified_checkpoint, state.finalized_checkpoint)

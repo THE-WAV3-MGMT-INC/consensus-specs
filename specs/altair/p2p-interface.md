@@ -13,10 +13,10 @@
   - [The gossip domain: gossipsub](#the-gossip-domain-gossipsub)
     - [Topics and messages](#topics-and-messages)
       - [Global topics](#global-topics)
-        - [`beacon_block`](#beacon_block)
-        - [`sync_committee_contribution_and_proof`](#sync_committee_contribution_and_proof)
+        - [Modified `beacon_block`](#modified-beacon_block)
+        - [New `sync_committee_contribution_and_proof`](#new-sync_committee_contribution_and_proof)
       - [Sync committee subnets](#sync-committee-subnets)
-        - [`sync_committee_{subnet_id}`](#sync_committee_subnet_id)
+        - [New `sync_committee_{subnet_id}`](#new-sync_committee_subnet_id)
       - [Sync committees and aggregation](#sync-committees-and-aggregation)
     - [Transitioning the gossip](#transitioning-the-gossip)
   - [The Req/Resp domain](#the-reqresp-domain)
@@ -52,7 +52,7 @@ domain. Some Phase 0 features will be deprecated, but not removed immediately.
 
 ```python
 @dataclass
-class Seen(object):
+class Seen:
     proposer_slots: Set[Tuple[ValidatorIndex, Slot]]
     aggregator_epochs: Set[Tuple[ValidatorIndex, Epoch]]
     aggregate_data_roots: Dict[Root, Set[Tuple[boolean, ...]]]
@@ -151,7 +151,7 @@ added in Altair to support the sync committees and the beacon block topic is
 updated with the modified type.
 
 The specification around the creation, validation, and dissemination of messages
-has not changed from the Phase 0 document.
+has not changed from the Phase 0 document unless explicitly noted here.
 
 The derivation of the `message-id` has changed starting with Altair to
 incorporate the message `topic` along with the message `data`. These are fields
@@ -199,7 +199,7 @@ Altair changes the type of the global beacon block topic and adds one global
 topic to propagate partially aggregated sync committee messages to all potential
 proposers of beacon blocks.
 
-###### `beacon_block`
+###### Modified `beacon_block`
 
 The existing specification for this topic does not change from the Phase 0
 document, but the type of the payload does change to the (modified)
@@ -209,7 +209,7 @@ document, but the type of the payload does change to the (modified)
 See the [state transition document](./beacon-chain.md#beaconblockbody) for
 Altair for further details.
 
-###### `sync_committee_contribution_and_proof`
+###### New `sync_committee_contribution_and_proof`
 
 This topic is used to propagate partially aggregated sync committee messages to
 be included in future blocks. The `state` parameter is the head state.
@@ -229,7 +229,6 @@ def validate_sync_committee_contribution_and_proof_gossip(
     contribution = contribution_and_proof.contribution
 
     # [IGNORE] The contribution's slot is for the current slot
-    # (with a MAXIMUM_GOSSIP_CLOCK_DISPARITY allowance)
     if not is_current_slot(state, contribution.slot, current_time_ms):
         raise GossipIgnore("contribution is not for the current slot")
 
@@ -325,7 +324,7 @@ def validate_sync_committee_contribution_and_proof_gossip(
 Sync committee subnets are used to propagate unaggregated sync committee
 messages to subsections of the network.
 
-###### `sync_committee_{subnet_id}`
+###### New `sync_committee_{subnet_id}`
 
 The `sync_committee_{subnet_id}` topics are used to propagate unaggregated sync
 committee messages to the subnet `subnet_id` to be aggregated before being
@@ -337,15 +336,14 @@ def validate_sync_committee_message_gossip(
     seen: Seen,
     state: BeaconState,
     sync_committee_message: SyncCommitteeMessage,
-    subnet_id: uint64,
     current_time_ms: uint64,
+    subnet_id: SubnetID,
 ) -> None:
     """
     Validate a SyncCommitteeMessage for gossip propagation on a subnet.
     Raises GossipIgnore or GossipReject on validation failure.
     """
     # [IGNORE] The message's slot is for the current slot
-    # (with a MAXIMUM_GOSSIP_CLOCK_DISPARITY allowance)
     if not is_current_slot(state, sync_committee_message.slot, current_time_ms):
         raise GossipIgnore("message is not for the current slot")
 

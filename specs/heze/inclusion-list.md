@@ -12,8 +12,6 @@
   - [New `get_inclusion_list_store`](#new-get_inclusion_list_store)
   - [New `process_inclusion_list`](#new-process_inclusion_list)
   - [New `get_inclusion_list_transactions`](#new-get_inclusion_list_transactions)
-  - [New `get_inclusion_list_bits`](#new-get_inclusion_list_bits)
-  - [New `is_inclusion_list_bits_inclusive`](#new-is_inclusion_list_bits_inclusive)
 
 <!-- mdformat-toc end -->
 
@@ -29,12 +27,12 @@ These are the inclusion list specifications to implement Heze.
 
 ```python
 @dataclass
-class InclusionListStore(object):
-    inclusion_lists: DefaultDict[Tuple[Slot, Root], Dict[Root, InclusionList]] = field(
+class InclusionListStore:
+    inclusion_lists: DefaultDict[Root, Dict[Root, InclusionList]] = field(
         default_factory=lambda: defaultdict(dict)
     )
     inclusion_list_timeliness: Dict[Root, boolean] = field(default_factory=dict)
-    equivocators: DefaultDict[Tuple[Slot, Root], Set[ValidatorIndex]] = field(
+    equivocators: DefaultDict[Root, Set[ValidatorIndex]] = field(
         default_factory=lambda: defaultdict(set)
     )
 ```
@@ -61,7 +59,7 @@ def process_inclusion_list(
     inclusion_list: InclusionList,
     is_timely: bool,
 ) -> None:
-    key = (inclusion_list.slot, inclusion_list.inclusion_list_committee_root)
+    key = inclusion_list.inclusion_list_committee_root
 
     # Ignore `inclusion_list` from equivocators.
     if inclusion_list.validator_index in store.equivocators[key]:
@@ -98,8 +96,7 @@ def get_inclusion_list_transactions(
     store: InclusionListStore, state: BeaconState, slot: Slot, only_timely: bool = True
 ) -> Sequence[Transaction]:
     committee = get_inclusion_list_committee(state, slot)
-    committee_root = hash_tree_root(committee)
-    key = (slot, committee_root)
+    key = hash_tree_root(committee)
 
     inclusion_lists = store.inclusion_lists[key]
     equivocators = store.equivocators[key]
@@ -115,58 +112,4 @@ def get_inclusion_list_transactions(
 
     # Deduplicate inclusion list transactions. Order does not need to be preserved.
     return list(set(transactions))
-```
-
-### New `get_inclusion_list_bits`
-
-```python
-def get_inclusion_list_bits(
-    store: InclusionListStore, state: BeaconState, slot: Slot, only_timely: bool = True
-) -> Bitvector[INCLUSION_LIST_COMMITTEE_SIZE]:
-    """
-    Return a ``Bitvector`` over inclusion list committee indices with bits set
-    for valid and non-equivocating inclusion list submissions for the given ``slot``.
-    """
-    committee = get_inclusion_list_committee(state, slot)
-    committee_root = hash_tree_root(committee)
-    key = (slot, committee_root)
-
-    inclusion_lists = store.inclusion_lists[key]
-    equivocators = store.equivocators[key]
-    timeliness = store.inclusion_list_timeliness
-
-    validator_indices = [
-        inclusion_lists[inclusion_list_root].validator_index
-        for inclusion_list_root in inclusion_lists
-        if inclusion_lists[inclusion_list_root].validator_index not in equivocators
-        if not only_timely or timeliness[inclusion_list_root]
-    ]
-
-    return Bitvector[INCLUSION_LIST_COMMITTEE_SIZE](
-        validator_index in validator_indices for validator_index in committee
-    )
-```
-
-### New `is_inclusion_list_bits_inclusive`
-
-```python
-def is_inclusion_list_bits_inclusive(
-    store: InclusionListStore,
-    state: BeaconState,
-    slot: Slot,
-    inclusion_list_bits: Bitvector[INCLUSION_LIST_COMMITTEE_SIZE],
-    only_timely: bool = True,
-) -> bool:
-    """
-    Return ``True`` if and only if ``inclusion_list_bits`` is a superset of
-    the locally observed inclusion list bits for the given ``slot``.
-    """
-    local_inclusion_list_bits = get_inclusion_list_bits(store, state, slot, only_timely)
-
-    return all(
-        inclusion_bit or not local_inclusion_bit
-        for inclusion_bit, local_inclusion_bit in zip(
-            inclusion_list_bits, local_inclusion_list_bits
-        )
-    )
 ```

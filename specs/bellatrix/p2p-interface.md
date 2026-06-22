@@ -11,7 +11,7 @@
   - [The gossip domain: gossipsub](#the-gossip-domain-gossipsub)
     - [Topics and messages](#topics-and-messages)
       - [Global topics](#global-topics)
-        - [`beacon_block`](#beacon_block)
+        - [Modified `beacon_block`](#modified-beacon_block)
     - [Transitioning the gossip](#transitioning-the-gossip)
   - [The Req/Resp domain](#the-reqresp-domain)
     - [Messages](#messages)
@@ -81,8 +81,7 @@ Topics follow the same specification as in prior upgrades. All topics remain
 stable except the beacon block topic which is updated with the modified type.
 
 The specification around the creation, validation, and dissemination of messages
-has not changed from the Phase 0 and Altair documents unless explicitly noted
-here.
+has not changed from the Altair document unless explicitly noted here.
 
 The derivation of the `message-id` remains stable.
 
@@ -100,7 +99,7 @@ the new `beacon_block` topics.
 
 Bellatrix changes the type of the global beacon block topic.
 
-###### `beacon_block`
+###### Modified `beacon_block`
 
 The `beacon_block` topic is used solely for propagating new signed beacon blocks
 to all nodes on the networks. Signed blocks are sent in their entirety. The
@@ -118,7 +117,7 @@ def validate_beacon_block_gossip(
     signed_beacon_block: SignedBeaconBlock,
     current_time_ms: uint64,
     # [New in Bellatrix]
-    block_payload_statuses: Dict[Root, PayloadValidationStatus] = {},
+    block_payload_statuses: Dict[Root, PayloadValidationStatus],
 ) -> None:
     """
     Validate a SignedBeaconBlock for gossip propagation.
@@ -134,7 +133,7 @@ def validate_beacon_block_gossip(
 
     # [IGNORE] The block is from a slot greater than the latest finalized slot
     # (MAY choose to validate and store such blocks for additional purposes
-    # -- e.g. slashing detection, archive nodes, etc).
+    # -- e.g. slashing detection, archive nodes, etc)
     finalized_slot = compute_start_slot_at_epoch(store.finalized_checkpoint.epoch)
     if block.slot <= finalized_slot:
         raise GossipIgnore("block is not from a slot greater than the latest finalized slot")
@@ -180,11 +179,11 @@ def validate_beacon_block_gossip(
         # [IGNORE] The block's parent's execution payload passes validation
         if parent_payload_status == PAYLOAD_STATUS_INVALIDATED:
             raise GossipIgnore("block's parent is valid and EL result is invalid")
-    else:
-        # [REJECT] The block's parent passes validation
-        if block.parent_root not in store.block_states:
-            # [Modified in Bellatrix]
-            raise GossipReject("block's parent is invalid and execution is not enabled")
+
+    # [REJECT] The block's parent passes validation
+    elif block.parent_root not in store.block_states:
+        # [Modified in Bellatrix]
+        raise GossipReject("block's parent is invalid and execution is not enabled")
 
     # [REJECT] The block is from a higher slot than its parent
     if block.slot <= store.blocks[block.parent_root].slot:
@@ -205,7 +204,7 @@ def validate_beacon_block_gossip(
     if block.proposer_index != expected_proposer:
         raise GossipReject("block proposer_index does not match expected proposer")
 
-    # Mark this block as seen for this proposer/slot combination
+    # Mark this block as seen
     seen.proposer_slots.add((block.proposer_index, block.slot))
 ```
 

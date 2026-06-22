@@ -2,8 +2,8 @@
 
 This document contains the networking specifications for EIP-8025.
 
-*Note*: This specification is built upon [Fulu](../../fulu/p2p-interface.md) and
-imports proof types from [proof-engine.md](./proof-engine.md).
+*Note*: This specification is built upon [Gloas](../../gloas/p2p-interface.md)
+and imports proof types from [proof-engine.md](./proof-engine.md).
 
 ## Table of contents
 
@@ -13,13 +13,13 @@ imports proof types from [proof-engine.md](./proof-engine.md).
 - [Constants](#constants)
   - [Execution](#execution)
 - [Containers](#containers)
-  - [`ProofByRootIdentifier`](#proofbyrootidentifier)
+  - [New `ProofByRootIdentifier`](#new-proofbyrootidentifier)
 - [Helpers](#helpers)
   - [New `compute_max_request_execution_proofs`](#new-compute_max_request_execution_proofs)
 - [The gossip domain: gossipsub](#the-gossip-domain-gossipsub)
   - [Topics and messages](#topics-and-messages)
     - [Global topics](#global-topics)
-      - [`execution_proof`](#execution_proof)
+      - [New `execution_proof`](#new-execution_proof)
 - [The Req/Resp domain](#the-reqresp-domain)
   - [Messages](#messages)
     - [ExecutionProofsByRange](#executionproofsbyrange)
@@ -43,7 +43,7 @@ imports proof types from [proof-engine.md](./proof-engine.md).
 
 ## Containers
 
-### `ProofByRootIdentifier`
+### New `ProofByRootIdentifier`
 
 ```python
 class ProofByRootIdentifier(Container):
@@ -69,7 +69,7 @@ def compute_max_request_execution_proofs() -> uint64:
 
 #### Global topics
 
-##### `execution_proof`
+##### New `execution_proof`
 
 This topic is used to propagate `SignedExecutionProof` messages.
 
